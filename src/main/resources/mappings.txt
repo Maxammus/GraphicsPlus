@@ -1,0 +1,8 @@
+
+program.modSSAO           = shaders/modSSAO.program
+shader.modSSAO.vertex     = shaders/modSSAO.vertex.shader
+shader.modSSAO.fragment   = shaders/modSSAO.fragment.shader
+
+program.modBlur           = shaders/modBlur.program
+shader.modBlur.vertex     = shaders/modBlur.vertex.shader
+shader.modBlur.fragment   = shaders/modBlur.fragment.shader

@@ -1,0 +1,2 @@
+vertexshader shader.modBlur.vertex
+pixelshader shader.modBlur.fragment

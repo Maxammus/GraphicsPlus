@@ -1,0 +1,2 @@
+vertexshader shader.modSSAO.vertex
+pixelshader shader.modSSAO.fragment

@@ -1,4 +1,4 @@
-#version 330  //WORKING
+#version 330
 #extension GL_EXT_gpu_shader4 : require
 /**
   \author Morgan McGuire and Michael Mara, NVIDIA Research

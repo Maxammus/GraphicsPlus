@@ -37,14 +37,6 @@ float reconstructCSZ(float d) {
     return clipInfo[0] / (clipInfo[1] * d + clipInfo[2]);
 }
 
-/**  vec4(-2.0f / (width*P[0][0]),
-          -2.0f / (height*P[1][1]),
-          ( 1.0f - P[0][2]) / P[0][0],
-          ( 1.0f + P[1][2]) / P[1][1])
-
-    where P is the projection matrix that maps camera space points
-    to [-1, 1] x [-1, 1].  That is, GCamera::getProjectUnit(). */
-
 vec4 projInfo = vec4(-2.0f / (resolution.x*projectionMatrix[0][0]),
           -2.0f / (resolution.y*projectionMatrix[1][1]),
           ( 1.0f - projectionMatrix[0][2]) / projectionMatrix[0][0],
@@ -118,15 +110,12 @@ vec3 reconstructNonUnitCSFaceNormal(vec3 C) {
 // taps from lining up.  This particular choice was tuned for numSamples == 9
 #define NUM_SPIRAL_TURNS (11)
 
-//////////////////////////////////////////////////
-
-
 /////////////////////////////////////////////////////////
 // SAO parameters
-uniform float radius    = 0.7;
-uniform float bias      = 0.0;
-uniform float intensity = 0.5;
-uniform int   numSamples  = 19;
+uniform float radius;
+uniform float bias;
+uniform float intensity;
+uniform int   numSamples  = 11;
 float radius2 = radius * radius;
 
 /** Returns a unit vector and a screen-space radius for the tap on a unit disk (the caller should scale by the actual disk radius) */
@@ -139,12 +128,10 @@ vec2 tapLocation(int sampleNumber, float spinAngle, out float ssR){
     return vec2(cos(angle), sin(angle));
 }
 
-
 /** Used for packing Z into the GB channels */
 float CSZToKey(float z) {
     return clamp(z * (1.0 / FAR_PLANE_Z), 0.0, 1.0);
 }
-
 
 /** Used for packing Z into the GB channels */
 void packKey(float key, out vec2 p) {
@@ -158,7 +145,6 @@ void packKey(float key, out vec2 p) {
     p.y = key * 256.0 - temp;
 }
 
-
 /** Read the camera-space position of the point at screen-space pixel ssP */
 vec3 getPosition(ivec2 ssP) {
     vec3 P;
@@ -169,18 +155,17 @@ vec3 getPosition(ivec2 ssP) {
     return P;
 }
 
-
 /** Read the camera-space position of the point at screen-space pixel ssP + unitOffset * ssR.  Assumes length(unitOffset) == 1 */
 vec3 getOffsetPosition(ivec2 ssC, vec2 unitOffset, float ssR) {
 
 	// Derivation:
-    //  mipLevel = floor(log(ssR / MAX_OFFSET));
+    //mipLevel = floor(log(ssR / MAX_OFFSET));
 /*#   ifdef GL_EXT_gpu_shader5
         int mipLevel = clamp(findMSB(int(ssR)) - LOG_MAX_OFFSET, 0, MAX_MIP_LEVEL);
 #   else
         int mipLevel = clamp(int(floor(log2(ssR))) - LOG_MAX_OFFSET, 0, MAX_MIP_LEVEL);
 #   endif*/
-	//Cba implmenting that
+	//Cba implmenting depth mipmaps, maybe later
 	int mipLevel = 0;
 
 	ivec2 ssP = ivec2(ssR * unitOffset) + ssC;
@@ -190,7 +175,7 @@ vec3 getOffsetPosition(ivec2 ssC, vec2 unitOffset, float ssR) {
     // We need to divide by 2^mipLevel to read the appropriately scaled coordinate from a MIP-map.
     // Manually clamp to the texture size because texelFetch bypasses the texture unit
     //ivec2 mipP = clamp(ssP >> mipLevel, ivec2(0), textureSize(gDepth, mipLevel) - ivec2(1)); //Giving weird smears on top right
-    ivec2 mipP = clamp(ssP >> mipLevel, ivec2(0), textureSize(gDepth, mipLevel) - ivec2(0));
+    ivec2 mipP = clamp(ssP, ivec2(0), textureSize(gDepth, mipLevel));
 
     P.z = reconstructCSZ(texelFetch(gDepth, mipP, mipLevel).r);
 
@@ -199,7 +184,6 @@ vec3 getOffsetPosition(ivec2 ssC, vec2 unitOffset, float ssR) {
 
     return P;
 }
-
 
 
 /** Compute the occlusion due to sample with index \a i about the pixel at \a ssC that corresponds
@@ -246,26 +230,17 @@ vec3 getNormal(ivec2 ssP) {
     vec3 posX      = getPosition(ssP+ivec2(1, 0));
     vec3 posY      = getPosition(ssP+ivec2(0, 1));
 
-    float backgroundThreshold = -1e9; // Match the value used in reconstructViewPos
+    float backgroundThreshold = -1e9;
     if (posCenter.z < backgroundThreshold || posX.z < backgroundThreshold || posY.z < backgroundThreshold) {
-        // Option 1: Return default normal (e.g., facing camera in view space)
         return vec3(0.0, 0.0, 1.0);
-        // Option 2: Handle this case before calling getNormalFromDepth
     }
 
-    // Calculate view-space difference vectors along screen X and Y axes
-    // Note: We use posCenter as the origin
     vec3 deltaPosX = posX - posCenter;
     vec3 deltaPosY = posY - posCenter;
 
-    // Calculate the normal using the cross product
-    // The order (deltaPosY, deltaPosX) often gives a normal pointing outwards (positive Z)
-    // in standard OpenGL view space, but might need flipping depending on conventions.
     vec3 normalView = cross(deltaPosY, deltaPosX);
 
-    // Check for degenerate cases (e.g., points are collinear, normal is zero)
     if (length(normalView) < 1e-6) {
-         // Return default normal or handle appropriately
          return vec3(0.0, 0.0, 1.0);
     }
     return normalize(normalView);
@@ -279,16 +254,14 @@ void main() {
     // World space point being shaded
     vec3 C = getPosition(ssC);
 
+    //Stores depth in .rg for bilateral blur.  cba, just give the blur the depth map
     //packKey(CSZToKey(C.z), bilateralKey);
 
     // Hash function used in the HPG12 AlchemyAO paper
     float randomPatternRotationAngle = (3 * ssC.x ^ ssC.y + ssC.x * ssC.y) * 10;
 
-    // Reconstruct normals from positions. These will lead to 1-pixel black lines
-    // at depth discontinuities, however the blur will wipe those out so they are not visible
-    // in the final image.
+    // Reconstruct normals from depth
     vec3 n_C = getNormal(ssC);
-
 
 	/** The height in pixels of a 1m object if viewed from 1m away.
     You can compute it from your projection matrix.  The actual value is just
@@ -319,6 +292,5 @@ void main() {
         A -= dFdy(A) * ((ssC.y & 1) - 0.5);
     }*/
 
-	//if(n_C.z < .4) { occlusionFactor = 1;return; }    occlusionFactor = .5;return;
 	occlusionFactor = A;
 }

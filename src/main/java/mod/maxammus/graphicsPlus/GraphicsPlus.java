@@ -5,6 +5,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.logging.Logger;
 import javassist.*;
+import javassist.bytecode.DuplicateMemberException;
 import javassist.expr.ExprEditor;
 import javassist.expr.MethodCall;
 import org.gotti.wurmunlimited.modloader.classhooks.HookManager;
@@ -17,7 +18,7 @@ import java.io.File;
 
 public class GraphicsPlus implements WurmClientMod, Configurable, Initable {
     static Logger logger = Logger.getLogger(mod.maxammus.graphicsPlus.GraphicsPlus.class.getName());
-    private static String version = "0.1";
+    private static String version = "0.1.1";
     ClassPool classPool = HookManager.getInstance().getClassPool();
 
     public static Map<String, List<String>> shaderEdits = new HashMap<>();
@@ -48,7 +49,7 @@ public class GraphicsPlus implements WurmClientMod, Configurable, Initable {
             classPool.getMethod("com.wurmonline.client.WurmClientBase", "runGame")
                             .insertBefore("mod.maxammus.graphicsPlus.GraphicsPlus.addResourcesAsPack();");
 
-            logger.info("Fixing invisible creatures");
+            logger.info("Fixing invisible creatures on modern renderer");
             addShaderEdit("shader.forward_dirlight.fragment", "col.a < 0.8", "col.a < 0.2");
             classPool.getMethod("com.wurmonline.client.renderer.shaders.Shader", "compile")
                     .instrument(new ExprEditor() {
@@ -68,20 +69,26 @@ public class GraphicsPlus implements WurmClientMod, Configurable, Initable {
             CtClass lightBeamEffect = classPool.getCtClass("com.wurmonline.client.renderer.effects.LightBeamEffect");
             CtClass materialInstance = classPool.getCtClass("com.wurmonline.client.renderer.MaterialInstance");
             CtField lightBeamEffectMaterial = new CtField(materialInstance, "material", lightBeamEffect);
-            lightBeamEffect.addField(lightBeamEffectMaterial, "material = com.wurmonline.client.util.GLHelper.useDeferredShading() " +
-                    "? com.wurmonline.client.renderer.Material.load(\"material.simple\").instance() : null;");
-            classPool.getMethod("com.wurmonline.client.renderer.effects.LightBeamEffect", "render")
-                            .instrument(new ExprEditor() {
-                                @Override
-                                public void edit(MethodCall m) throws CannotCompileException {
-                                    if(m.getMethodName().equals("queue"))
-                                        m.replace(" { if(material != null) {" +
-                                                "    p.materialInstance = material;" +
-                                                "    p.program = material.getProgram();" +
-                                                "    p.bindings = material.getProgramBindings();" +
-                                                "} $proceed($$);}");
-                                }
-                            });
+            try {
+                lightBeamEffect.addField(lightBeamEffectMaterial, "material = com.wurmonline.client.util.GLHelper.useDeferredShading() " +
+                        "? com.wurmonline.client.renderer.Material.load(\"material.simple\").instance() : null;");
+                classPool.getMethod("com.wurmonline.client.renderer.effects.LightBeamEffect", "render")
+                        .instrument(new ExprEditor() {
+                            @Override
+                            public void edit(MethodCall m) throws CannotCompileException {
+                                if (m.getMethodName().equals("queue"))
+                                    m.replace(" { if(material != null) {" +
+                                            "    p.materialInstance = material;" +
+                                            "    p.program = material.getProgram();" +
+                                            "    p.bindings = material.getProgramBindings();" +
+                                            "} $proceed($$);}");
+                            }
+                        });
+
+            }
+            //Prevent conflict with fixVBO already adding handling this
+            //should work as long as mods are loaded alphabetically
+            catch (DuplicateMemberException ignored)  { }
 
             if(useSSAO) {
                 logger.info("Enabling SSAO");

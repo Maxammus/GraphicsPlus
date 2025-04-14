@@ -53,15 +53,13 @@ public class SSAO {
             createRenderTarget();
 
             ssaoBlurAxis = BufferUtil.newFloatBuffer(2);
-            ssaoRadius = BufferUtil.newFloatBuffer(1);
-            ssaoBias = BufferUtil.newFloatBuffer(1);
-            ssaoIntensity = BufferUtil.newFloatBuffer(1);
+            //wurm only supports vec2 and vec4 uniform floats
+            ssaoRadius = BufferUtil.newFloatBuffer(2);
+            ssaoBias = BufferUtil.newFloatBuffer(2);
+            ssaoIntensity = BufferUtil.newFloatBuffer(2);
             ssaoRadius.put(GraphicsPlus.ssaoRadius);
             ssaoBias.put(GraphicsPlus.ssaoBias);
             ssaoIntensity.put(GraphicsPlus.ssaoIntensity);
-            ssaoRadius.rewind();
-            ssaoBias.rewind();
-            ssaoIntensity.rewind();
 
             ssaoBlurProgram = Program.load("program.modBlur");
             ssaoBlurBindings = new ProgramBindings();
@@ -126,6 +124,12 @@ public class SSAO {
             ubf = ssaoBindings.bindUniformMatrix(uniform.getLocation(), uniform.getDimension(), uniform.getType());
             ubf.values = projectionMatrixWorld.getBuffer();
         }
+        uniform = ssaoProgram.getUniformByName("radius");
+        ssaoBindings.bindUniformFloat(uniform, ssaoRadius);
+        uniform = ssaoProgram.getUniformByName("bias");
+        ssaoBindings.bindUniformFloat(uniform, ssaoBias);
+        uniform = ssaoProgram.getUniformByName("intensity");
+        ssaoBindings.bindUniformFloat(uniform, ssaoIntensity);
 
         p.bindings = ssaoBindings;
         ssaoQueue.queue(p, null);

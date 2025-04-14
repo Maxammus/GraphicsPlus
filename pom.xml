@@ -6,7 +6,7 @@
 
     <groupId>mod.maxammus</groupId>
     <artifactId>GraphicsPlus</artifactId>
-    <version>0.1</version>
+    <version>0.1.1</version>
     <packaging>jar</packaging>
 
     <properties>

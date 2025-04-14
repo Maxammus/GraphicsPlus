@@ -108,19 +108,18 @@ vec3 reconstructNonUnitCSFaceNormal(vec3 C) {
 
 // This is the number of turns around the circle that the spiral pattern makes.  This should be prime to prevent
 // taps from lining up.  This particular choice was tuned for numSamples == 9
-#define NUM_SPIRAL_TURNS (11)
+#define NUM_SPIRAL_TURNS (7)
 
 /////////////////////////////////////////////////////////
 // SAO parameters
-uniform float radius;
-uniform float bias;
-uniform float intensity;
-uniform int   numSamples  = 11;
-float radius2 = radius * radius;
+uniform vec2 radius;
+uniform vec2 bias;
+uniform vec2 intensity;
+uniform int numSamples  = 11;
+float radius2 = radius.x * radius.x;
 
 /** Returns a unit vector and a screen-space radius for the tap on a unit disk (the caller should scale by the actual disk radius) */
-vec2 tapLocation(int sampleNumber, float spinAngle, out float ssR){
-    // Radius relative to ssR
+vec2 tapLocation(int sampleNumber, float spinAngle, out float ssR) {
     float alpha = float(sampleNumber + 0.5) * (1.0 / numSamples);
     float angle = alpha * (NUM_SPIRAL_TURNS * 6.28) + spinAngle;
 
@@ -218,10 +217,10 @@ float sampleAO(in ivec2 ssC, in vec3 C, in vec3 n_C, in float ssDiskRadius, in i
     // contribution still falls off with radius^2, but we've adjusted the rate in a way that is
     // more computationally efficient and happens to be aesthetically pleasing.
     // D: Low contrast, no division operation
-    //return float(vv < radius2) * max((vn - bias) / (epsilon + vv), 0.0) * radius2 * 0.6;
-    float f = max(radius2 - vv, 0.0); return f * f * f * max((vn - bias) / (epsilon + vv), 0.0);
-    //return 4.0 * max(1.0 - vv * (1 / radius2), 0.0) * max(vn - bias, 0.0);
-    //return 2.0 * float(vv < radius * radius) * max(vn - bias, 0.0);
+    //return float(vv < radius2) * max((vn - bias.x) / (epsilon + vv), 0.0) * radius2 * 0.6;
+    float f = max(radius2 - vv, 0.0); return f * f * f * max((vn - bias.x) / (epsilon + vv), 0.0);
+    //return 4.0 * max(1.0 - vv * (1 / radius2), 0.0) * max(vn - bias.x, 0.0);
+    //return 2.0 * float(vv < radius.x * radius.x) * max(vn - bias.x, 0.0);
 }
 
 vec3 getNormal(ivec2 ssP) {
@@ -272,7 +271,7 @@ void main() {
 
     // Choose the screen-space sample radius
     // proportional to the projected area of the sphere
-    float ssDiskRadius = -projScale * radius / C.z;
+    float ssDiskRadius = -projScale * radius.x / C.z;
 
     float sum = 0.0;
     for (int i = 0; i < numSamples; ++i) {
@@ -280,7 +279,7 @@ void main() {
     }
 
 	/** intensity / radius^6 */
-	float intensityDivR6 = intensity / pow(radius, 6);
+	float intensityDivR6 = intensity.x / pow(radius.x, 6);
     float A = max(0.0, 1.0 - sum * intensityDivR6 * (5.0 / numSamples));
 
     // Bilateral box-filter over a quad for free, respecting depth edges
